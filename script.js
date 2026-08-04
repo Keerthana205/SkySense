@@ -1,6 +1,6 @@
 "use strict";
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "https://skysense-qcma.onrender.com";
 
 const MAX_SEARCH_HISTORY = 5;
 const TOAST_DURATION_MS = 3000;
