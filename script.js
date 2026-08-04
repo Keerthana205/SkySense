@@ -1,14 +1,6 @@
 "use strict";
 
-const apiKey = "036d297dab6512901667dcebf0bd738c";
-const geoUrl = "https://api.openweathermap.org/geo/1.0/direct?q=";
-
-const weatherUrl = "https://api.openweathermap.org/data/2.5/weather?units=metric";
-
-const forecastUrl = "https://api.openweathermap.org/data/2.5/forecast?units=metric";
-
-const airQualityUrl =
-    "https://api.openweathermap.org/data/2.5/air_pollution";
+const API_BASE = "http://127.0.0.1:8000";
 
 const MAX_SEARCH_HISTORY = 5;
 const TOAST_DURATION_MS = 3000;
@@ -384,6 +376,26 @@ function hasUpcomingRain(forecastData) {
         const condition = item.weather[0].main;
 
         return isRainCondition(condition);
+
+    });
+
+}
+
+function hasUpcomingThunderstorm(forecastData) {
+
+    if (!forecastData || !forecastData.list) {
+
+        return false;
+
+    }
+
+    const upcomingList = forecastData.list.slice(0, 3);
+
+    return upcomingList.some(item => {
+
+        const condition = item.weather[0].main;
+
+        return condition === "Thunderstorm";
 
     });
 
@@ -979,7 +991,7 @@ async function showSuggestions() {
 
     try {
         const response = await fetch(
-            `${geoUrl}${encodeURIComponent(query)}&limit=10&appid=${apiKey}`
+            `${API_BASE}/geocode?q=${encodeURIComponent(query)}`
         );
 
         if (!response.ok) {
@@ -1095,7 +1107,7 @@ async function fetchApiData(url, errorMessage) {
 async function fetchWeatherData(lat, lon) {
 
     return await fetchApiData(
-        `${weatherUrl}&lat=${lat}&lon=${lon}&appid=${apiKey}`,
+        `${API_BASE}/weather?lat=${lat}&lon=${lon}`,
         "Failed to fetch weather data."
     );
 
@@ -1104,7 +1116,7 @@ async function fetchWeatherData(lat, lon) {
 async function fetchForecastData(lat, lon) {
 
     return await fetchApiData(
-        `${forecastUrl}&lat=${lat}&lon=${lon}&appid=${apiKey}`,
+        `${API_BASE}/forecast?lat=${lat}&lon=${lon}`,
         "Failed to fetch forecast."
     );
 
@@ -1113,7 +1125,7 @@ async function fetchForecastData(lat, lon) {
 async function fetchAirQualityData(lat, lon) {
 
     return await fetchApiData(
-        `${airQualityUrl}?lat=${lat}&lon=${lon}&appid=${apiKey}`,
+        `${API_BASE}/air-quality?lat=${lat}&lon=${lon}`,
         "Failed to fetch air quality."
     );
 
@@ -1171,7 +1183,7 @@ async function searchWeather() {
         showSkeleton();
 
         const geoResponse = await fetch(
-            geoUrl + encodeURIComponent(cityName) + `&limit=1&appid=${apiKey}`
+            `${API_BASE}/geocode?q=${encodeURIComponent(cityName)}`
         );
 
         const geoData = await geoResponse.json();
@@ -1224,7 +1236,7 @@ async function loadCurrentWeather(position) {
 
     try {
         const reverseGeoResponse = await fetch(
-            `https://api.openweathermap.org/geo/1.0/reverse?lat=${lat}&lon=${lon}&limit=5&appid=${apiKey}`
+            `${API_BASE}/reverse-geocode?lat=${lat}&lon=${lon}`
         );
 
         if (reverseGeoResponse.ok) {
@@ -1534,6 +1546,7 @@ function updateOutdoorScore(temp, rawWeather, humidity, wind, forecastData, airD
     let penalty = 0;
     const aqi = airData?.list?.[0]?.main?.aqi ?? 1;
     const upcomingRain = hasUpcomingRain(forecastData);
+    const upcomingThunderstorm = hasUpcomingThunderstorm(forecastData);
     let status = "Excellent";
     let description = "Great day for walking, running & cycling.";
 
@@ -1545,6 +1558,9 @@ function updateOutdoorScore(temp, rawWeather, humidity, wind, forecastData, airD
         penalty += 6;
     }
     else if (weather === "Snow") {
+        penalty += 5;
+    }
+    else if (upcomingThunderstorm) {
         penalty += 5;
     }
     else if (
@@ -1566,7 +1582,7 @@ function updateOutdoorScore(temp, rawWeather, humidity, wind, forecastData, airD
         penalty += 1;
     }
     else if (upcomingRain) {
-        penalty += 1;
+        penalty += 2;
     }
 
     switch (aqi) {
