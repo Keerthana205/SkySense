@@ -7,25 +7,21 @@
     <meta name="description"
         content="SkySense is a modern weather dashboard featuring real-time weather updates, hourly forecasts, favorite cities, air quality information, outdoor activity recommendations, and dynamic weather themes.">
     <title>SkySense</title>
-    <link rel="dns-prefetch" href="https://api.openweathermap.org">
     <link rel="dns-prefetch" href="https://fonts.googleapis.com">
     <link rel="dns-prefetch" href="https://fonts.gstatic.com">
-    <link rel="preconnect" href="https://api.openweathermap.org">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16x16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png">
-    <link rel="preload" as="image" href="images/logo.webp" type="image/webp">
-    <link rel="preload" as="image" href="images/clouds.webp" type="image/webp" fetchpriority="high">
     <link rel="stylesheet" href="style.css">
     <link rel="preload" as="style"
-        href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0..1,0&display=swap"
         onload="this.onload=null;this.rel='stylesheet'">
     <noscript>
         <link rel="stylesheet"
-            href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap">
+        href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0..1,0&display=swap">
     </noscript>
 </head>
 
@@ -140,11 +136,7 @@
                         </span>
                     </div>
 
-                    <p class="date">
-
-                        Saturday, 31 May 2025 &bull; 10:30 AM
-
-                    </p>
+                    <p class="date">--</p>
 
                 </div>
 
@@ -345,12 +337,13 @@
 
                     <h2>Hourly Forecast</h2>
 
-                    <button type="button" class="view-all-link">
-                        View 5-Day
-                        <span class="material-symbols-outlined" aria-hidden="true">
-                            chevron_right
-                        </span>
-                    </button>
+                        <button type="button" class="view-all-link" aria-haspopup="dialog"
+                            aria-label="View 5-day forecast">
+                            View 5-Day
+                            <span class="material-symbols-outlined" aria-hidden="true">
+                                chevron_right
+                            </span>
+                        </button>
 
                 </div>
 
@@ -361,7 +354,7 @@
                         <p class="forecast-time">--</p>
                         <div class="forecast-body">
                             <img src="images/clear.webp" class="forecast-icon" alt="Sunny" width="34" height="34"
-                                loading="lazy" decoding="async">
+                                decoding="async">
                             <span class="forecast-temp">--</span>
                         </div>
                     </div>
@@ -370,7 +363,7 @@
                         <p class="forecast-time">--</p>
                         <div class="forecast-body">
                             <img src="images/clear.webp" class="forecast-icon" alt="Sunny" width="34" height="34"
-                                loading="lazy" decoding="async">
+                                decoding="async">
                             <span class="forecast-temp">--</span>
                         </div>
                     </div>
@@ -379,7 +372,7 @@
                         <p class="forecast-time">--</p>
                         <div class="forecast-body">
                             <img src="images/clouds.webp" class="forecast-icon" alt="Partly Cloudy" width="34"
-                                height="34" loading="lazy" decoding="async">
+                                height="34" decoding="async">
                             <span class="forecast-temp">--</span>
                         </div>
                     </div>
@@ -388,7 +381,7 @@
                         <p class="forecast-time">--</p>
                         <div class="forecast-body">
                             <img src="images/drizzle.webp" class="forecast-icon" alt="Rain" width="34" height="34"
-                                loading="lazy" decoding="async">
+                                decoding="async">
                             <span class="forecast-temp">--</span>
                         </div>
                     </div>
@@ -397,7 +390,7 @@
                         <p class="forecast-time">--</p>
                         <div class="forecast-body">
                             <img src="images/clouds.webp" class="forecast-icon" alt="Partly Cloudy" width="34"
-                                height="34" loading="lazy" decoding="async">
+                                height="34" decoding="async">
                             <span class="forecast-temp">--</span>
                         </div>
                     </div>
@@ -406,7 +399,7 @@
                         <p class="forecast-time">--</p>
                         <div class="forecast-body">
                             <img src="images/mist.webp" class="forecast-icon" alt="Clear Night" width="34" height="34"
-                                loading="lazy" decoding="async">
+                                decoding="async">
                             <span class="forecast-temp">--</span>
                         </div>
                     </div>
@@ -472,21 +465,6 @@
                 <p class="toast-title">Success</p>
                 <p class="toast-message">Message</p>
             </div>
-        </div>
-
-        <div class="loading-overlay hidden">
-
-            <div class="loading-card">
-
-                <img src="images/clouds.webp" class="loading-icon" alt="Loading" width="72" height="72" loading="lazy"
-                    decoding="async">
-
-                <h3>Updating Weather...</h3>
-
-                <p>Fetching the latest forecast</p>
-
-            </div>
-
         </div>
 
         <script src="script.js" defer></script>

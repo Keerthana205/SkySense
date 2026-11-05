@@ -2,6 +2,13 @@
 
 const API_BASE = "https://skysense-qcma.onrender.com";
 
+const DEFAULT_FALLBACK_CITY = {
+    name: "London",
+    country: "GB",
+    lat: 51.5074,
+    lon: -0.1278
+};
+
 const MAX_SEARCH_HISTORY = 5;
 const TOAST_DURATION_MS = 3000;
 const DEBOUNCE_DELAY_MS = 300;
@@ -273,7 +280,17 @@ function getLocalDate(timezoneOffset) {
 
     const utc = new Date().getTime() + new Date().getTimezoneOffset() * 60000;
 
-    return new Date(utc + timezoneOffset * 1000);
+    return new Date(utc + (timezoneOffset || 0) * 1000);
+
+}
+
+function getLocationDate(timestampSeconds, timezoneOffset = 0) {
+
+    const utcMs = timestampSeconds * 1000;
+
+    const localOffsetMs = new Date().getTimezoneOffset() * 60000;
+
+    return new Date(utcMs + localOffsetMs + (timezoneOffset * 1000));
 
 }
 
@@ -494,7 +511,7 @@ function saveSearchHistory(searchData) {
 function saveFavorite(weatherData, lat, lon) {
 
     if (!weatherData || !weatherData.name) {
-        alert("Please search or load a city first.");
+        showToast("No City Loaded", "Please search or load a city first.", "info", "#F59E0B");
         return;
     }
 
@@ -524,11 +541,13 @@ function saveFavorite(weatherData, lat, lon) {
 
         // Remove from favorites if already present (toggle)
         favoriteCities.splice(existingIndex, 1);
+        showToast("Removed", `${favorite.name} removed from favorites.`, "favorite", "#94A3B8");
 
     } else {
 
         // Add to favorites
         favoriteCities.push(favorite);
+        showToast("Favorited", `${favorite.name} added to favorites!`, "favorite", "#EF4444");
 
     }
 
@@ -560,12 +579,17 @@ function updateFavoriteHeaderButton() {
         if (isFav) {
             favoriteButton.classList.add("is-favorite");
             favoriteButton.setAttribute("title", "Remove from Favorites");
+            favoriteButton.setAttribute("aria-label", "Remove from Favorites");
+            favoriteButton.setAttribute("aria-pressed", "true");
         } else {
             favoriteButton.classList.remove("is-favorite");
             favoriteButton.setAttribute("title", "Add to Favorites");
+            favoriteButton.setAttribute("aria-label", "Add to Favorites");
+            favoriteButton.setAttribute("aria-pressed", "false");
         }
     } else {
         favoriteButton.classList.remove("is-favorite");
+        favoriteButton.setAttribute("aria-pressed", "false");
     }
 }
 
@@ -573,10 +597,7 @@ function displayFavorites() {
 
     if (!favoriteList) return;
 
-    // Remove cards and empty state
-    favoriteList.querySelectorAll(".favorite-card, .favorites-empty").forEach(card => {
-        card.remove();
-    });
+    favoriteList.innerHTML = "";
 
     if (favoriteCities.length === 0) {
         const emptyState = document.createElement("div");
@@ -600,6 +621,9 @@ function displayFavorites() {
         const card = document.createElement("div");
 
         card.className = "favorite-card";
+        card.setAttribute("role", "button");
+        card.setAttribute("tabindex", "0");
+        card.setAttribute("aria-label", `Load weather for ${formatLocation(cityItem)}`);
 
         if (currentCityName && cityItem.name.toLowerCase() === currentCityName.toLowerCase()) {
             card.classList.add("favorite-card--active");
@@ -607,10 +631,11 @@ function displayFavorites() {
 
         const cityName = formatLocation(cityItem);
         const cityTemp = cityItem.temp || "";
-        const weatherIconSrc = getWeatherIcon(cityItem.weather || "Clouds");
+        const weatherCondition = cityItem.weather || "Clouds";
+        const weatherIconSrc = getWeatherIcon(weatherCondition);
 
         card.innerHTML = `
-            <span class="material-symbols-outlined favorite-heart">favorite</span>
+            <span class="material-symbols-outlined favorite-heart" aria-hidden="true">favorite</span>
 
             <span class="city-name">${cityName}</span>
 
@@ -619,246 +644,240 @@ function displayFavorites() {
             <img
                 src="${weatherIconSrc}"
                 class="city-icon"
-                alt="weather icon"
+                alt="${weatherCondition} icon"
                 width="24"
                 height="24"
-                loading="lazy"
                 decoding="async">
 
-            <span class="material-symbols-outlined remove-favorite-btn" title="Remove favorite">close</span>
+            <button type="button" class="remove-favorite-btn" title="Remove ${cityName} from favorites" aria-label="Remove ${cityName} from favorites">
+                <span class="material-symbols-outlined" aria-hidden="true">close</span>
+            </button>
         `;
 
-        card.addEventListener("click", (e) => {
+                const selectFav = (e) => {
+                    if (e.target.closest(".remove-favorite-btn")) {
+                        e.stopPropagation();
+                        removeFavorite(index);
+                        return;
+                    }
 
-            if (e.target.classList.contains("remove-favorite-btn")) {
-                e.stopPropagation();
-                removeFavorite(index);
-                return;
-            }
+                    if (cityItem.lat && cityItem.lon) {
+                        fetchWeather(
+                            cityItem.lat,
+                            cityItem.lon,
+                    cityItem
+                        );
+                    } else if (cityItem.name) {
+                        searchInput.value = cityItem.name;
+                        searchWeather(cityItem.name);
+                    }
+                };
 
-            if (cityItem.lat && cityItem.lon) {
-                fetchWeather(
-                    cityItem.lat,
-                    cityItem.lon,
-                    { name: cityItem.name, country: "" }
-                );
-            } else if (cityItem.name) {
-                searchInput.value = cityItem.name;
-                searchWeather();
-            }
+                card.addEventListener("click", selectFav);
+                card.addEventListener("keydown", (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        selectFav(e);
+                    }
+                });
 
-        });
+                favoriteList.appendChild(card);
 
-        favoriteList.appendChild(card);
+            });
 
-    });
-
-    updateFavoriteHeaderButton();
-
-}
-
-
-function updateCurrentWeather(
-    weatherData,
-    airData,
-    locationData
-) {
-    const { main, weather, wind: windData, sys, name } = weatherData;
-
-    temperature.textContent = `${Math.round(main.temp)}°C`;
-
-    condition.textContent = formatWeatherMain(weather[0].main);
-
-    if (locationData) {
-
-        city.textContent = formatLocation(locationData);
-
-    } else {
-
-        city.textContent = formatLocation({ name, sys });
+        updateFavoriteHeaderButton();
 
     }
 
-    feelsLike.textContent = `${Math.round(main.feels_like)}°C`;
 
-    humidity.textContent = `${main.humidity}%`;
+function updateCurrentWeather(
+        weatherData,
+        airData,
+        locationData
+    ) {
+            const { main, weather, wind: windData, sys, name } = weatherData;
 
-    wind.textContent = `${Math.round(windData.speed * 3.6)} km/h`;
+            temperature.textContent = `${Math.round(main.temp)}°C`;
 
-    const air = getAirQuality(
-        airData?.list?.[0]?.main?.aqi
-    );
+            condition.textContent = formatWeatherMain(weather[0].main);
 
-    airQuality.textContent = air.text;
+            if (locationData) {
 
-    airQuality.className = `air-quality ${air.className}`;
+                city.textContent = formatLocation(locationData);
 
-    weatherIcon.src = getWeatherIcon(weather[0].main);
-}
+            } else {
+
+                city.textContent = formatLocation({ name, sys });
+
+            }
+
+            feelsLike.textContent = `${Math.round(main.feels_like)}°C`;
+
+            humidity.textContent = `${main.humidity}%`;
+
+            wind.textContent = `${Math.round(windData.speed * 3.6)} km/h`;
+
+            const air = getAirQuality(
+                airData?.list?.[0]?.main?.aqi
+            );
+
+            airQuality.textContent = air.text;
+
+            airQuality.className = `air-quality ${air.className}`;
+
+            weatherIcon.src = getWeatherIcon(weather[0].main);
+            weatherIcon.alt = `${weather[0].description || weather[0].main} icon`;
+        }
 
 function updateUI(
-    weatherData,
-    forecastData,
-    airData,
-    locationData
-) {
+            weatherData,
+            forecastData,
+            airData,
+            locationData
+        ) {
 
-    updateCurrentWeather(weatherData, airData, locationData);
-    updateTheme(weatherData.weather[0].main, weatherData.timezone);
-    updateGreeting(weatherData.timezone);
-    updateDate(weatherData.timezone);
+            updateCurrentWeather(weatherData, airData, locationData);
+            updateTheme(weatherData.weather[0].main, weatherData.timezone);
+            updateGreeting(weatherData.timezone);
+            updateDate(weatherData.timezone);
 
-    updateEssentials(weatherData, forecastData);
+            updateEssentials(weatherData, forecastData);
 
-    updateOutdoorScore(
-        weatherData.main.temp,
-        weatherData.weather[0].main,
-        weatherData.main.humidity,
-        Math.round(weatherData.wind.speed * 3.6),
-        forecastData,
-        airData
-    );
+            updateOutdoorScore(
+                weatherData.main.temp,
+                weatherData.weather[0].main,
+                weatherData.main.humidity,
+                Math.round(weatherData.wind.speed * 3.6),
+                forecastData,
+                airData
+            );
 
-    updateForecast(forecastData);
+            updateForecast(forecastData);
 
-    displayFavorites();
+            displayFavorites();
 
-    searchInput.value = "";
+            searchInput.value = "";
 
-    animateUpdate(
-        hero,
-        cardsRow,
-        forecastSection
-    );
-}
+            animateUpdate(
+                hero,
+                cardsRow,
+                forecastSection
+            );
+        }
 
 function displayForecastModal() {
 
-    if (!currentForecastData) return;
+            if (!currentForecastData || !currentForecastData.list) return;
 
-    forecastDays.innerHTML = "";
+            forecastDays.innerHTML = "";
 
-    const dailyForecast = {};
+            const timezoneOffset = currentForecastData.city?.timezone ?? currentTimezone ?? 0;
+            const dailyForecast = {};
 
-    currentForecastData.list.forEach(item => {
+            currentForecastData.list.forEach(item => {
 
-        const date = new Date(item.dt * 1000);
+                const date = getLocationDate(item.dt, timezoneOffset);
 
-        const day = date.toLocaleDateString("en-US", {
-            weekday: "long"
-        });
+                    const dayKey = date.toISOString().split("T")[0];
 
-        if (!dailyForecast[day]) {
+                    const dayName = date.toLocaleDateString("en-US", {
+                        weekday: "long"
+                    });
 
-            dailyForecast[day] = {
+                        const hour = date.getHours();
+                        const middayDiff = Math.abs(hour - 14);
 
-                day,
+                            if(!dailyForecast[dayKey]) {
 
-                high: item.main.temp_max,
+                                    dailyForecast[dayKey] = {
+                                        day: dayName,
+                                        high: item.main.temp_max,
+                                        low: item.main.temp_min,
+                                        weather: item.weather[0].main,
+                description: item.weather[0].description,
+                                        closestMiddayDiff: middayDiff
+                                    };
 
-                low: item.main.temp_min,
+                            } else {
 
-                weather: item.weather[0].main,
+                                    dailyForecast[dayKey].high = Math.max(
+                                        dailyForecast[dayKey].high,
+                                        item.main.temp_max
+                                    );
 
-                description: item.weather[0].description
+                                    dailyForecast[dayKey].low = Math.min(
+                                        dailyForecast[dayKey].low,
+                                        item.main.temp_min
+                                    );
 
-            };
-
-        }
-        else {
-
-            dailyForecast[day].high = Math.max(
-                dailyForecast[day].high,
-                item.main.temp_max
-            );
-
-            dailyForecast[day].low = Math.min(
-                dailyForecast[day].low,
-                item.main.temp_min
-            );
+                                if(middayDiff <dailyForecast[dayKey].closestMiddayDiff) {
+                                    dailyForecast[dayKey].weather = item.weather[0].main;
+                dailyForecast[dayKey].description = item.weather[0].description;
+                dailyForecast[dayKey].closestMiddayDiff = middayDiff;
+            }
 
         }
 
     });
 
-    const today = new Date().toLocaleDateString("en-US", {
+    const nowAtLocation = getLocalDate(timezoneOffset);
+
+    const today = nowAtLocation.toLocaleDateString("en-US", {
         weekday: "long"
     });
 
-    const tomorrowDate = new Date();
-
+    const tomorrowDate = new Date(nowAtLocation);
     tomorrowDate.setDate(tomorrowDate.getDate() + 1);
 
     const tomorrow = tomorrowDate.toLocaleDateString("en-US", {
         weekday: "long"
     });
 
-    Object.values(dailyForecast)
+    const daysHtml = Object.values(dailyForecast)
         .slice(0, 5)
-        .forEach(day => {
+        .map(day => {
 
             let displayDay = day.day;
 
             if (day.day === today) {
-
                 displayDay = "Today";
-
             }
             else if (day.day === tomorrow) {
-
                 displayDay = "Tomorrow";
-
             }
 
-            forecastDays.innerHTML += `
+            return `
+            <div class="forecast-day">
+                <div class="forecast-day-left">
+                    <img
+                        src="${getWeatherIcon(day.weather)}"
+                        class="forecast-day-icon"
+                        alt="${day.description} icon"
+                        width="42"
+                        height="42"
+                        decoding="async"
+                    >
+                    <div>
+                        <div class="forecast-day-name">${displayDay}</div>
+                        <div class="forecast-day-condition">${day.description}</div>
+                    </div>
+                </div>
+                <span class="forecast-day-temp">
+                    ${Math.round(day.high)}°
+                    <span>/ ${Math.round(day.low)}°</span>
+                </span>
+            </div>`;
+        }).join("");
 
-    <div class="forecast-day">
+forecastDays.innerHTML = daysHtml;
+forecastModal.classList.remove("hidden");
+document.body.style.overflow = "hidden";
 
-    <div class="forecast-day-left">
+}
 
-        <img
-            src="${getWeatherIcon(day.weather)}"
-            class="forecast-day-icon"
-            alt="${day.weather} forecast icon"
-            width="42"
-            height="42"
-            loading="lazy"
-            decoding="async"
-        >
-
-        <div>
-
-            <div class="forecast-day-name">
-
-            ${displayDay}
-
-            </div>
-
-            <div class="forecast-day-condition">
-
-                ${day.description}
-
-            </div>
-
-        </div>
-
-    </div>
-
-    <span class="forecast-day-temp">
-
-        ${Math.round(day.high)}°
-<span>/ ${Math.round(day.low)}°</span>
-
-    </span>
-
-</div>
-
-`;
-
-        });
-
-    forecastModal.classList.remove("hidden");
-
+function closeForecastModal() {
+    forecastModal.classList.add("hidden");
+    document.body.style.overflow = "";
 }
 
 let currentSuggestions = [];
@@ -1138,7 +1157,10 @@ async function fetchWeather(lat, lon, locationData) {
         const [weatherData, forecastData, airData] = await Promise.all([
             fetchWeatherData(lat, lon),
             fetchForecastData(lat, lon),
-            fetchAirQualityData(lat, lon)
+            fetchAirQualityData(lat, lon).catch(err => {
+                console.warn("Air quality data temporarily unavailable:", err);
+                return null;
+            })
         ]);
 
         currentForecastData = forecastData;
@@ -1162,737 +1184,781 @@ async function fetchWeather(lat, lon, locationData) {
     }
     catch (error) {
 
-        console.error(error);
+        console.error("fetchWeather error:", error);
         hideSkeleton();
-        alert("Unable to load weather data.");
+        stopUpdateAnimation();
+        showToast("Weather Unavailable", "Unable to load weather data. Please try again.", "error", "#EF4444");
 
     }
 
 }
 
-async function searchWeather() {
-    try {
+    async function searchWeather(targetCity) {
+        try {
 
-        const cityName = searchInput.value.trim();
+            const cityName = (typeof targetCity === "string" ? targetCity : searchInput.value).trim();
 
-        if (cityName === "") {
-            showToast("Empty Search", "Please enter a city name.", "search", "#F59E0B");
-            return;
-        }
+            if (cityName === "") {
+                showToast("Empty Search", "Please enter a city name.", "search", "#F59E0B");
+                return;
+            }
 
-        showSkeleton();
+            if (suggestionsBox) {
+                suggestionsBox.classList.add("hidden");
+            }
+            selectedSuggestionIndex = -1;
 
-        const geoResponse = await fetch(
-            `${API_BASE}/geocode?q=${encodeURIComponent(cityName)}`
-        );
+            showSkeleton();
 
-        const geoData = await geoResponse.json();
+            const geoResponse = await fetch(
+                `${API_BASE}/geocode?q=${encodeURIComponent(cityName)}`
+            );
 
-        if (geoData.length === 0) {
-            hideSkeleton();
-            showToast("City Not Found", "Please enter a valid city name.", "error", "#EF4444");
-            return;
-        }
+            if (!geoResponse.ok) {
+                hideSkeleton();
+                showToast("Location Error", "Failed to search for city. Please try again.", "error", "#EF4444");
+                return;
+            }
 
-        const lat = geoData[0].lat;
-        const lon = geoData[0].lon;
+            const geoData = await geoResponse.json();
 
-        saveSearchHistory(geoData[0]);
+                if (!Array.isArray(geoData) || geoData.length === 0) {
+                    hideSkeleton();
+                    showToast("City Not Found", `No match found for "${cityName}".`, "error", "#EF4444");
+                    return;
+                }
 
-        await fetchWeather(lat, lon, geoData[0]);
-    }
+                const lat = geoData[0].lat;
+                const lon = geoData[0].lon;
+
+                saveSearchHistory(geoData[0]);
+
+                await fetchWeather(lat, lon, geoData[0]);
+            }
     catch (error) {
 
-        console.error(error);
-        hideSkeleton();
-        showToast("Error", "Something went wrong. Please try again.", "error", "#EF4444");
+                console.error("searchWeather error:", error);
+                hideSkeleton();
+                showToast("Error", "Something went wrong. Please try again.", "error", "#EF4444");
 
-    }
+            }
 
-}
+        }
 function getCurrentLocation() {
 
-    if (navigator.geolocation) {
+            if (navigator.geolocation) {
 
-        navigator.geolocation.getCurrentPosition(
-            loadCurrentWeather,
-            showLocationError
+                navigator.geolocation.getCurrentPosition(
+                    loadCurrentWeather,
+                        () => {
+                    showLocationError();
+                fetchWeather(DEFAULT_FALLBACK_CITY.lat, DEFAULT_FALLBACK_CITY.lon, DEFAULT_FALLBACK_CITY);
+            },
+            { timeout: 8000 }
         );
 
-    } else {
+        } else {
 
-        showToast("Error", "Geolocation is not supported by this browser.", "error", "#EF4444");
+            showToast("Location Notice", "Geolocation is not supported. Showing London.", "info", "#437EF7");
+            fetchWeather(DEFAULT_FALLBACK_CITY.lat, DEFAULT_FALLBACK_CITY.lon, DEFAULT_FALLBACK_CITY);
 
-    }
-
-}
-
-async function loadCurrentWeather(position) {
-
-    const lat = position.coords.latitude;
-    const lon = position.coords.longitude;
-
-    let locationData = null;
-
-    try {
-        const reverseGeoResponse = await fetch(
-            `${API_BASE}/reverse-geocode?lat=${lat}&lon=${lon}`
-        );
-
-        if (reverseGeoResponse.ok) {
-            const geoData = await reverseGeoResponse.json();
-            if (geoData && geoData.length > 0) {
-                locationData = geoData[0];
-            }
         }
-    } catch (error) {
-        console.warn("Failed to reverse geocode current location:", error);
+
     }
 
-    await fetchWeather(lat, lon, locationData);
-}
+    async function loadCurrentWeather(position) {
+
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+
+        let locationData = null;
+
+        try {
+            const reverseGeoResponse = await fetch(
+                `${API_BASE}/reverse-geocode?lat=${lat}&lon=${lon}`
+            );
+
+            if (reverseGeoResponse.ok) {
+                const geoData = await reverseGeoResponse.json();
+                    if (Array.isArray(geoData) && geoData.length > 0) {
+                        locationData = geoData[0];
+                    }
+                }
+            } catch (error) {
+                console.warn("Failed to reverse geocode current location:", error);
+            }
+
+            await fetchWeather(lat, lon, locationData);
+        }
 
 function showLocationError() {
 
-    hideSkeleton();
-    showToast("Error", "Location access denied.", "error", "#EF4444");
+            showToast("Location Notice", "Location access unavailable. Showing London.", "info", "#437EF7");
 
-}
+        }
 
-function updateGreeting(timezoneOffset) {
+        function updateGreeting(timezoneOffset) {
 
-    const now = getLocalDate(timezoneOffset);
+            const now = getLocalDate(timezoneOffset);
 
-    const hour = now.getHours();
+            const hour = now.getHours();
 
-    if (hour >= 5 && hour < 12) {
+            if (hour >= 5 && hour < 12) {
 
-        greeting.textContent = "Good Morning";
+                greeting.textContent = "Good Morning";
 
-    }
-    else if (hour >= 12 && hour < 17) {
+            }
+            else if (hour >= 12 && hour < 17) {
 
-        greeting.textContent = "Good Afternoon";
+                greeting.textContent = "Good Afternoon";
 
-    }
-    else if (hour >= 17 && hour < 21) {
+            }
+            else if (hour >= 17 && hour < 21) {
 
-        greeting.textContent = "Good Evening";
+                greeting.textContent = "Good Evening";
 
-    }
-    else {
+            }
+            else {
 
-        greeting.textContent = "Good Night";
-
-    }
-
-}
-
-function updateDate(timezoneOffset) {
-
-    const now = getLocalDate(timezoneOffset);
-
-    const date = now.toLocaleDateString("en-US", {
-
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        year: "numeric"
-
-    });
-
-    const time = now.toLocaleTimeString("en-US", {
-
-        hour: "numeric",
-        minute: "2-digit"
-
-    });
-
-    dateTime.textContent = `${date} • ${time}`;
-
-}
-
-function updateEssentials(weatherData, forecastData) {
-    if (!essentialsItems || !whyBody) return;
-
-    const temp = weatherData.main.temp;
-    const weatherMain = weatherData.weather[0].main;
-    const humidity = weatherData.main.humidity;
-    const windSpeed = Math.round(weatherData.wind.speed * 3.6);
-
-    // Check forecast for rain in upcoming forecast items
-    let upcomingRain = false;
-    let rainTimeText = "";
-
-    if (forecastData && forecastData.list) {
-
-        const upcomingList = forecastData.list.slice(0, 3);
-
-        for (const item of upcomingList) {
-
-            const mainCondition = item.weather[0].main;
-
-            if (isRainCondition(mainCondition)) {
-
-                upcomingRain = true;
-
-                const forecastHour = new Date(item.dt * 1000).getHours();
-
-                if (forecastHour >= 17 || forecastHour < 4) {
-
-                    rainTimeText = "this evening";
-
-                }
-                else if (forecastHour >= 12 && forecastHour < 17) {
-
-                    rainTimeText = "this afternoon";
-
-                }
-                else {
-
-                    rainTimeText = "later today";
-
-                }
-
-                break;
+                greeting.textContent = "Good Night";
 
             }
 
         }
 
-    }
+        function updateDate(timezoneOffset) {
 
-    let items = [];
-    let whyIcon = "";
-    let whyText = "";
-    let whyClass = "why-sun";
+            const now = getLocalDate(timezoneOffset);
 
-    if (weatherMain === "Tornado") {
+            const date = now.toLocaleDateString("en-US", {
 
-        items = [
-            { icon: "🏠", label: "Seek indoor shelter" },
-            { icon: "⚠️", label: "Move to an interior room away from windows" }
-        ];
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric"
 
-        whyIcon = "🌪";
-        whyClass = "why-rain";
-        whyText = "Tornado warning! Move to an interior room and stay away from windows.";
+            });
 
-    }
-    else if (weatherMain === "Thunderstorm") {
+            const time = now.toLocaleTimeString("en-US", {
 
-        items = [
-            { icon: "🏠", label: "Stay indoors" },
-            { icon: "⚡", label: "Avoid open areas and tall trees" },
-            { icon: "☂", label: "Carry waterproof gear" }
-        ];
+                hour: "numeric",
+                minute: "2-digit"
 
-        whyIcon = "⛈";
-        whyClass = "why-rain";
-        whyText = "Thunderstorms expected. Avoid outdoor activities and seek shelter if storms develop.";
+            });
 
-    }
-    else if (weatherMain === "Snow") {
-
-        items = [
-            { icon: "🧥", label: "Warm Jacket" },
-            { icon: "🧣", label: "Scarf & gloves" },
-            { icon: "☕", label: "Hot beverage" }
-        ];
-
-        whyIcon = "❄️";
-        whyClass = "why-cold";
-        whyText = "Snow expected today. Wear warm clothing.";
-
-    }
-    else if (weatherMain === "Drizzle") {
-
-        items = [
-            { icon: "☂", label: "Carry an umbrella" },
-            { icon: "🧥", label: "Light waterproof jacket" }
-        ];
-
-        whyIcon = "🌦";
-        whyClass = "why-rain";
-        whyText = "Light drizzle expected today. Carry an umbrella if you'll be outdoors.";
-
-    }
-    else if (
-        isRainCondition(weatherMain) ||
-        (upcomingRain && weatherMain !== "Snow")
-    ) {
-
-        items = [
-            { icon: "☂", label: "Carry an umbrella" },
-            { icon: "👟", label: "Waterproof shoes" }
-        ];
-
-        if (temp > 30) {
-            items.push({ icon: "👕", label: "Lightweight quick-dry clothing" });
-        }
-
-        whyIcon = "🌧";
-        whyClass = "why-rain";
-
-        if (isRainCondition(weatherMain)) {
-
-            whyText = "Heavy rain expected today.";
-
-        } else {
-
-            whyText = `Heavy rain expected ${rainTimeText}.`;
+            dateTime.textContent = `${date} • ${time}`;
 
         }
 
-    }
-    else if (
-        weatherMain === "Mist" ||
-        weatherMain === "Fog" ||
-        weatherMain === "Haze" ||
-        weatherMain === "Smoke" ||
-        weatherMain === "Dust" ||
-        weatherMain === "Sand" ||
-        weatherMain === "Ash"
-    ) {
+        function updateEssentials(weatherData, forecastData) {
+            if (!essentialsItems || !whyBody) return;
 
-        items = [
-            { icon: "🚗", label: "Drive carefully" },
-            { icon: "💡", label: "Use headlights" },
-            { icon: "⚠️", label: "Watch slippery roads" }
-        ];
+            const temp = weatherData.main.temp;
+            const weatherMain = weatherData.weather[0].main;
+            const humidity = weatherData.main.humidity;
+            const windSpeed = Math.round(weatherData.wind.speed * 3.6);
+            const timezoneOffset = weatherData.timezone || 0;
+            const localNow = getLocalDate(timezoneOffset);
+            const localHour = localNow.getHours();
+            const isNight = localHour >= 19 || localHour < 6;
 
-        whyIcon = "🌫";
-        whyClass = "why-cold";
-        whyText = `Reduced visibility due to ${weatherMain.toLowerCase()}. Drive carefully and use headlights.`;
+            // Check forecast for rain in upcoming forecast items
+            let upcomingRain = false;
+            let rainTimeText = "";
 
-    }
-    else if (weatherMain === "Clear" && temp >= 28) {
-        items = [
-            { icon: "🧢", label: "Cap" },
-            { icon: "🕶", label: "Sunglasses" },
-            { icon: "🧴", label: "Sunscreen" }
-        ];
-        whyIcon = "☀";
-        whyClass = "why-sun";
-        if (temp >= 32) {
-            whyText = `High temperature (${Math.round(temp)}°C) expected today.`;
-        } else {
-            whyText = "Warm and sunny weather expected today.";
-        }
-    } else if (temp <= 10) {
-        items = [
-            { icon: "🧥", label: "Warm Jacket" },
-            { icon: "🧣", label: "Scarf & gloves" },
-            { icon: "☕", label: "Hot beverage" }
-        ];
-        whyIcon = "❄️";
-        whyClass = "why-cold";
-        whyText = `Cold temperatures (${Math.round(temp)}°C) expected today.`;
-    } else if (temp <= 18) {
-        items = [
-            { icon: "🧥", label: "Warm Jacket" },
-            { icon: "🧣", label: "Scarf" },
-            { icon: "👟", label: "Closed shoes" }
-        ];
-        whyIcon = "🧥";
-        whyClass = "why-cold";
-        whyText = `Cool weather (${Math.round(temp)}°C) throughout the day.`;
-    } else if (windSpeed >= 25) {
-        items = [
-            { icon: "🧥", label: "Windbreaker" },
-            { icon: "🕶", label: "Sunglasses" },
-            { icon: "🧢", label: "Secure cap" }
-        ];
-        whyIcon = "💨";
-        whyClass = "why-cold";
-        whyText = `High winds up to ${windSpeed} km/h predicted.`;
-    } else if (humidity >= 80 && temp >= 24) {
-        items = [
-            { icon: "👕", label: "Light cotton clothes" },
-            { icon: "💧", label: "Water bottle" },
-            { icon: "🕶", label: "Sunglasses" }
-        ];
-        whyIcon = "💦";
-        whyClass = "why-sun";
-        whyText = `High humidity level (${humidity}%) today.`;
-    } else {
-        items = [
-            { icon: "👕", label: "Light cotton clothes" },
-            { icon: "🕶", label: "Sunglasses" },
-            { icon: "👟", label: "Comfortable shoes" }
-        ];
-        whyIcon = "☀";
-        whyClass = "why-sun";
-        whyText = `Pleasant temperatures (${Math.round(temp)}°C) today.`;
-    }
+            if (forecastData && forecastData.list) {
 
-    essentialsItems.innerHTML = items.map(item => `
+                const upcomingList = forecastData.list.slice(0, 3);
+
+                for (const item of upcomingList) {
+
+                    const mainCondition = item.weather[0].main;
+
+                    if (isRainCondition(mainCondition)) {
+
+                        upcomingRain = true;
+
+                        const forecastTime = getLocationDate(item.dt, timezoneOffset);
+                        const forecastHour = forecastTime.getHours();
+
+                        if (forecastHour >= 17 || forecastHour < 4) {
+
+                            rainTimeText = "this evening";
+
+                        }
+                        else if (forecastHour >= 12 && forecastHour < 17) {
+
+                            rainTimeText = "this afternoon";
+
+                        }
+                        else {
+
+                            rainTimeText = "later today";
+
+                        }
+
+                        break;
+
+                    }
+
+                }
+
+            }
+
+            let items = [];
+            let whyIcon = "";
+            let whyText = "";
+            let whyClass = "why-sun";
+
+            if (weatherMain === "Tornado") {
+
+                items = [
+                    { icon: "🏠", label: "Seek indoor shelter" },
+                    { icon: "⚠️", label: "Move to an interior room away from windows" }
+                ];
+
+                whyIcon = "🌪";
+                whyClass = "why-rain";
+                whyText = "Tornado warning! Move to an interior room and stay away from windows.";
+
+            }
+            else if (weatherMain === "Thunderstorm") {
+
+                items = [
+                    { icon: "🏠", label: "Stay indoors" },
+                    { icon: "⚡", label: "Avoid open areas and tall trees" },
+                    { icon: "☂", label: "Carry waterproof gear" }
+                ];
+
+                whyIcon = "⛈";
+                whyClass = "why-rain";
+                whyText = "Thunderstorms expected. Avoid outdoor activities and seek shelter if storms develop.";
+
+            }
+            else if (weatherMain === "Snow") {
+
+                items = [
+                    { icon: "🧥", label: "Warm Jacket" },
+                    { icon: "🧣", label: "Scarf & gloves" },
+                    { icon: "☕", label: "Hot beverage" }
+                ];
+
+                whyIcon = "❄️";
+                whyClass = "why-cold";
+                whyText = "Snow expected today. Wear warm clothing.";
+
+            }
+            else if (weatherMain === "Drizzle") {
+
+                items = [
+                    { icon: "☂", label: "Carry an umbrella" },
+                    { icon: "🧥", label: "Light waterproof jacket" }
+                ];
+
+                whyIcon = "🌦";
+                whyClass = "why-rain";
+                whyText = "Light drizzle expected today. Carry an umbrella if you'll be outdoors.";
+
+            }
+            else if (
+                isRainCondition(weatherMain) ||
+                (upcomingRain && weatherMain !== "Snow")
+            ) {
+
+                items = [
+                    { icon: "☂", label: "Carry an umbrella" },
+                    { icon: "👟", label: "Waterproof shoes" }
+                ];
+
+                    if (temp <= 12) {
+                        items.unshift({ icon: "🧥", label: "Warm waterproof jacket" });
+                    } else if (temp > 30) {
+                        items.push({ icon: "👕", label: "Lightweight quick-dry clothing" });
+                    }
+
+                    whyIcon = "🌧";
+                    whyClass = "why-rain";
+
+                    if (isRainCondition(weatherMain)) {
+
+                        whyText = "Rain expected today. Stay dry outdoors.";
+
+                    } else {
+
+                        whyText = `Rain expected ${rainTimeText}.`;
+
+                    }
+
+                }
+                else if (
+                    weatherMain === "Mist" ||
+                    weatherMain === "Fog" ||
+                    weatherMain === "Haze" ||
+                    weatherMain === "Smoke" ||
+                    weatherMain === "Dust" ||
+                    weatherMain === "Sand" ||
+                    weatherMain === "Ash"
+                ) {
+
+                    items = [
+                        { icon: "🚗", label: "Drive carefully" },
+                        { icon: "💡", label: "Use headlights" },
+                        { icon: "⚠️", label: "Watch slippery roads" }
+                    ];
+
+                    whyIcon = "🌫";
+                    whyClass = "why-cold";
+                    whyText = `Reduced visibility due to ${weatherMain.toLowerCase()}. Drive carefully and use headlights.`;
+
+                }
+    else if (weatherMain === "Clear" && temp >= 28 && !isNight) {
+                        items = [
+                            { icon: "🧢", label: "Cap" },
+                            { icon: "🕶", label: "Sunglasses" },
+                            { icon: "🧴", label: "Sunscreen" }
+                        ];
+                        whyIcon = "☀";
+                        whyClass = "why-sun";
+                        if (temp >= 32) {
+                            whyText = `High temperature (${Math.round(temp)}°C) expected today.`;
+                        } else {
+                            whyText = "Warm and sunny weather expected today.";
+                        }
+                    } else if (temp <= 10) {
+                        items = [
+                            { icon: "🧥", label: "Warm Jacket" },
+                            { icon: "🧣", label: "Scarf & gloves" },
+                            { icon: "☕", label: "Hot beverage" }
+                        ];
+                        whyIcon = "❄️";
+                        whyClass = "why-cold";
+                        whyText = `Cold temperatures (${Math.round(temp)}°C) expected today.`;
+                    } else if (temp <= 18) {
+                        items = [
+                            { icon: "🧥", label: "Warm Jacket" },
+                            { icon: "🧣", label: "Scarf" },
+                            { icon: "👟", label: "Closed shoes" }
+                        ];
+                        whyIcon = "🧥";
+                        whyClass = "why-cold";
+                        whyText = `Cool weather (${Math.round(temp)}°C) throughout the day.`;
+                    } else if (windSpeed >= 25) {
+                        items = [
+                            { icon: "🧥", label: "Windbreaker" },
+                            { icon: isNight ? "🧣" : "🕶", label: isNight ? "Light scarf" : "Sunglasses" },
+                            { icon: "🧢", label: "Secure cap" }
+                        ];
+                        whyIcon = "💨";
+                        whyClass = "why-cold";
+                        whyText = `High winds up to ${windSpeed} km/h predicted.`;
+                    } else if (humidity >= 80 && temp >= 24) {
+                        items = [
+                            { icon: "👕", label: "Light cotton clothes" },
+                            { icon: "💧", label: "Water bottle" },
+            { icon: isNight ? "👟" : "🕶", label: isNight ? "Comfortable footwear" : "Sunglasses" }
+                        ];
+                        whyIcon = "💦";
+                        whyClass = "why-sun";
+                        whyText = `High humidity level (${humidity}%) today.`;
+                    } else if (isNight) {
+                        items = [
+                            { icon: "🧥", label: temp < 20 ? "Light jacket" : "Comfortable evening wear" },
+                            { icon: "👟", label: "Comfortable shoes" },
+                            { icon: "🌙", label: "Clear night skies" }
+                        ];
+                        whyIcon = "🌙";
+                        whyClass = "why-cold";
+                        whyText = `Pleasant night temperatures (${Math.round(temp)}°C).`;
+                    } else {
+                        items = [
+                            { icon: "👕", label: "Light cotton clothes" },
+                            { icon: "🕶", label: "Sunglasses" },
+                            { icon: "👟", label: "Comfortable shoes" }
+                        ];
+                        whyIcon = "☀";
+                        whyClass = "why-sun";
+                        whyText = `Pleasant temperatures (${Math.round(temp)}°C) today.`;
+                    }
+
+                    essentialsItems.innerHTML = items.map(item => `
         <div class="essential-item">
             <span class="essential-icon">${item.icon}</span>
             <span class="essential-label">${item.label}</span>
         </div>
     `).join("");
 
-    whyBody.className = `why-body ${whyClass}`;
-    whyBody.innerHTML = `
+                    whyBody.className = `why-body ${whyClass}`;
+                    whyBody.innerHTML = `
         <span class="why-icon">${whyIcon}</span>
         <span class="why-text">${whyText}</span>
     `;
-}
-
-function updateOutdoorScore(temp, rawWeather, humidity, wind, forecastData, airData) {
-
-    const weather = formatWeatherMain(rawWeather);
-    let penalty = 0;
-    const aqi = airData?.list?.[0]?.main?.aqi ?? 1;
-    const upcomingRain = hasUpcomingRain(forecastData);
-    const upcomingThunderstorm = hasUpcomingThunderstorm(forecastData);
-    let status = "Excellent";
-    let description = "Great day for walking, running & cycling.";
+                }
+
+                function updateOutdoorScore(temp, rawWeather, humidity, wind, forecastData, airData) {
+
+                    const weather = formatWeatherMain(rawWeather);
+                    let penalty = 0;
+                    const aqi = airData?.list?.[0]?.main?.aqi ?? 1;
+                    const upcomingRain = hasUpcomingRain(forecastData);
+                    const upcomingThunderstorm = hasUpcomingThunderstorm(forecastData);
+                    let status = "Excellent";
+                    let description = "Great day for walking, running & cycling.";
 
-    // Weather condition score penalties
-    if (weather === "Tornado") {
-        penalty += 6;
-    }
-    else if (weather === "Thunderstorm") {
-        penalty += 6;
-    }
-    else if (weather === "Snow") {
-        penalty += 5;
-    }
-    else if (upcomingThunderstorm) {
-        penalty += 5;
-    }
-    else if (
-        weather === "Rain" ||
-        weather === "Drizzle" ||
-        weather === "Squall"
-    ) {
-        penalty += 2;
-    }
-    else if (
-        weather === "Mist" ||
-        weather === "Fog" ||
-        weather === "Haze" ||
-        weather === "Smoke" ||
-        weather === "Dust" ||
-        weather === "Sand" ||
-        weather === "Ash"
-    ) {
-        penalty += 1;
-    }
-    else if (upcomingRain) {
-        penalty += 2;
-    }
+                    // Weather condition score penalties
+                    if (weather === "Tornado") {
+                        penalty += 6;
+                    }
+                    else if (weather === "Thunderstorm") {
+                        penalty += 6;
+                    }
+                    else if (weather === "Snow") {
+                        penalty += 5;
+                    }
+                    else if (upcomingThunderstorm) {
+                        penalty += 5;
+                    }
+                    else if (
+                        weather === "Rain" ||
+                        weather === "Drizzle" ||
+                        weather === "Squall"
+                    ) {
+                        penalty += 2;
+                    }
+                    else if (
+                        weather === "Mist" ||
+                        weather === "Fog" ||
+                        weather === "Haze" ||
+                        weather === "Smoke" ||
+                        weather === "Dust" ||
+                        weather === "Sand" ||
+                        weather === "Ash"
+                    ) {
+                        penalty += 1;
+                    }
+                    else if (upcomingRain) {
+                        penalty += 2;
+                    }
 
-    switch (aqi) {
+                    switch (aqi) {
 
-        case 3:
-            penalty += 1;
-            break;
-
-        case 4:
-            penalty += 2;
-            break;
-
-        case 5:
-            penalty += 3;
-            break;
-
-    }
-
-    // Very hot
-    if (temp >= 38) {
-
-        penalty += 3;
-
-    }
-    else if (temp >= 33) {
-
-        penalty += 2;
-
-    }
-
-    // Very cold
-    if (temp <= 5) {
-
-        penalty += 2;
-
-    }
-    else if (temp <= 12) {
+                        case 3:
+                            penalty += 1;
+                            break;
+
+                        case 4:
+                            penalty += 2;
+                            break;
+
+                        case 5:
+                            penalty += 3;
+                            break;
+
+                    }
+
+                    // Very hot
+                    if (temp >= 38) {
+
+                        penalty += 3;
+
+                    }
+                    else if (temp >= 33) {
+
+                        penalty += 2;
+
+                    }
+
+                    // Very cold
+                    if (temp <= 5) {
+
+                        penalty += 2;
+
+                    }
+                    else if (temp <= 12) {
 
-        penalty += 1;
+                        penalty += 1;
 
-    }
+                    }
 
-    // High humidity
-    if (humidity >= 90) {
+                    // High humidity
+                    if (humidity >= 90) {
 
-        penalty += 2;
+                        penalty += 2;
 
-    }
-    else if (humidity >= 75) {
+                    }
+                    else if (humidity >= 75) {
 
-        penalty += 1;
+                        penalty += 1;
 
-    }
+                    }
 
-    // Strong wind
-    if (wind >= 25) {
-        penalty += 1;
-    }
+                    // Strong wind
+                    if (wind >= 25) {
+                        penalty += 1;
+                    }
 
-    let score;
+                    let score;
 
-    if (penalty <= 1) {
+                    if (penalty <= 1) {
 
-        score = 5;
+                        score = 5;
 
-    }
-    else if (penalty <= 3) {
+                    }
+                    else if (penalty <= 3) {
 
-        score = 4;
+                        score = 4;
 
-    }
-    else if (penalty <= 5) {
+                    }
+                    else if (penalty <= 5) {
 
-        score = 3;
+                        score = 3;
 
-    }
-    else if (penalty <= 7) {
+                    }
+                    else if (penalty <= 7) {
 
-        score = 2;
+                        score = 2;
 
-    }
-    else {
+                    }
+                    else {
 
-        score = 1;
+                        score = 1;
 
-    }
+                    }
 
-    let statusClass = "excellent";
-    if (score === 5) {
-        status = "Excellent";
-        statusClass = "excellent";
-        description = "Great day for walking, running & cycling.";
-    }
-    else if (score === 4) {
-        status = "Good";
-        statusClass = "good";
-        description = "Enjoy outdoor activities with a few precautions.";
-    }
-    else if (score === 3) {
-        status = "Fair";
-        statusClass = "fair";
-        description = "Outdoor activities are possible, but plan carefully.";
-    }
-    else if (score === 2) {
-        status = "Poor";
-        statusClass = "poor";
-        description = "Outdoor activities are not recommended.";
-    }
-    else {
-        status = "Very Poor";
-        statusClass = "very-poor";
-        description = "Better to stay indoors today.";
-    }
+                    let statusClass = "excellent";
+                    if (score === 5) {
+                        status = "Excellent";
+                        statusClass = "excellent";
+                        description = "Great day for walking, running & cycling.";
+                    }
+                    else if (score === 4) {
+                        status = "Good";
+                        statusClass = "good";
+                        description = "Enjoy outdoor activities with a few precautions.";
+                    }
+                    else if (score === 3) {
+                        status = "Fair";
+                        statusClass = "fair";
+                        description = "Outdoor activities are possible, but plan carefully.";
+                    }
+                    else if (score === 2) {
+                        status = "Poor";
+                        statusClass = "poor";
+                        description = "Outdoor activities are not recommended.";
+                    }
+                    else {
+                        status = "Very Poor";
+                        statusClass = "very-poor";
+                        description = "Better to stay indoors today.";
+                    }
 
-    if (stars) {
-        stars.textContent = "★".repeat(score) + "☆".repeat(5 - score);
-        stars.setAttribute("aria-label", `${score} out of 5 stars`);
-    }
-    if (scoreStatus) {
+                    if (stars) {
+                        stars.textContent = "★".repeat(score) + "☆".repeat(5 - score);
+                        stars.setAttribute("aria-label", `${score} out of 5 stars`);
+                    }
+                    if (scoreStatus) {
 
-        scoreStatus.textContent = status;
+                        scoreStatus.textContent = status;
 
-        scoreStatus.className = `score-status ${statusClass}`;
+                        scoreStatus.className = `score-status ${statusClass}`;
 
-    }
+                    }
 
-    if (stars) {
-        stars.className = `stars ${statusClass}`;
-    }
+                    if (stars) {
+                        stars.className = `stars ${statusClass}`;
+                    }
 
-    if (scoreDescription) scoreDescription.textContent = description;
-}
+                    if (scoreDescription) scoreDescription.textContent = description;
+                }
 
-function updateForecast(forecastData) {
+                function updateForecast(forecastData) {
 
-    const hourlyForecast = forecastData.list.slice(0, 6);
+                    if (!forecastData || !forecastData.list) return;
 
-    hourlyForecast.forEach((item, index) => {
+                    const timezoneOffset = forecastData.city?.timezone ?? currentTimezone ?? 0;
+                    const hourlyForecast = forecastData.list.slice(0, 6);
 
-        const cardElements = forecastCardElements[index];
+                    hourlyForecast.forEach((item, index) => {
 
-        if (!cardElements) return;
+                        const cardElements = forecastCardElements[index];
 
-        const forecastTime = new Date(item.dt * 1000);
+                        if (!cardElements) return;
 
-        cardElements.time.textContent = forecastTime.toLocaleTimeString([], {
-            hour: "numeric"
-        });
+                        const forecastTime = getLocationDate(item.dt, timezoneOffset);
 
-        cardElements.temp.textContent = `${Math.round(item.main.temp)}°C`;
+                        cardElements.time.textContent = forecastTime.toLocaleTimeString([], {
+                            hour: "numeric"
+                        });
 
-        cardElements.icon.src = getWeatherIcon(item.weather[0].main);
+                        cardElements.temp.textContent = `${Math.round(item.main.temp)}°C`;
 
-    });
+                        const conditionDesc = item.weather[0]?.description || item.weather[0]?.main || "Weather";
+                        cardElements.icon.src = getWeatherIcon(item.weather[0].main);
+                        cardElements.icon.alt = `${conditionDesc} icon`;
 
-}
+                    });
 
-searchButton.addEventListener("click", searchWeather);
+                }
 
-searchInput.addEventListener("keydown", function (event) {
+                searchButton.addEventListener("click", () => {
+                    if (suggestionsBox) suggestionsBox.classList.add("hidden");
+                    selectedSuggestionIndex = -1;
+                    searchWeather();
+                });
 
-    const isDropdownVisible = suggestionsBox && !suggestionsBox.classList.contains("hidden");
-    const suggestionItems = suggestionsBox ? suggestionsBox.querySelectorAll(".suggestion-item") : [];
+                searchInput.addEventListener("keydown", function (event) {
 
-    if (isDropdownVisible && suggestionItems.length > 0) {
+                    const isDropdownVisible = suggestionsBox && !suggestionsBox.classList.contains("hidden");
+                    const suggestionItems = suggestionsBox ? suggestionsBox.querySelectorAll(".suggestion-item") : [];
 
-        if (event.key === "ArrowDown") {
+                    if (isDropdownVisible && suggestionItems.length > 0) {
 
-            event.preventDefault();
-            let nextIndex = selectedSuggestionIndex + 1;
-            if (nextIndex >= suggestionItems.length) {
-                nextIndex = 0;
-            }
-            updateHighlightedSuggestion(nextIndex);
-            return;
+                        if (event.key === "ArrowDown") {
 
-        } else if (event.key === "ArrowUp") {
+                            event.preventDefault();
+                            let nextIndex = selectedSuggestionIndex + 1;
+                            if (nextIndex >= suggestionItems.length) {
+                                nextIndex = 0;
+                            }
+                            updateHighlightedSuggestion(nextIndex);
+                            return;
 
-            event.preventDefault();
-            let prevIndex = selectedSuggestionIndex - 1;
-            if (prevIndex < 0) {
-                prevIndex = suggestionItems.length - 1;
-            }
-            updateHighlightedSuggestion(prevIndex);
-            return;
+                        } else if (event.key === "ArrowUp") {
 
-        } else if (event.key === "Escape") {
+                            event.preventDefault();
+                            let prevIndex = selectedSuggestionIndex - 1;
+                            if (prevIndex < 0) {
+                                prevIndex = suggestionItems.length - 1;
+                            }
+                            updateHighlightedSuggestion(prevIndex);
+                            return;
 
-            event.preventDefault();
-            suggestionsBox.classList.add("hidden");
-            selectedSuggestionIndex = -1;
-            return;
+                        } else if (event.key === "Escape") {
 
-        } else if (event.key === "Enter") {
+                            event.preventDefault();
+                            suggestionsBox.classList.add("hidden");
+                            selectedSuggestionIndex = -1;
+                            return;
 
-            if (selectedSuggestionIndex >= 0 && currentSuggestions[selectedSuggestionIndex]) {
-                event.preventDefault();
-                selectSuggestion(currentSuggestions[selectedSuggestionIndex]);
-                return;
-            }
+                        } else if (event.key === "Enter") {
 
-        }
+                            if (selectedSuggestionIndex >= 0 && currentSuggestions[selectedSuggestionIndex]) {
+                                event.preventDefault();
+                                selectSuggestion(currentSuggestions[selectedSuggestionIndex]);
+                                return;
+                            }
 
-    } else if (event.key === "Escape") {
+                        }
 
-        if (suggestionsBox) suggestionsBox.classList.add("hidden");
-        selectedSuggestionIndex = -1;
-        return;
+                    } else if (event.key === "Escape") {
 
-    }
+                        if (suggestionsBox) suggestionsBox.classList.add("hidden");
+                        selectedSuggestionIndex = -1;
+                        return;
 
-    if (event.key === "Enter") {
+                    }
 
-        if (suggestionsBox) suggestionsBox.classList.add("hidden");
-        selectedSuggestionIndex = -1;
-        searchWeather();
+                    if (event.key === "Enter") {
 
-    }
+                        if (suggestionsBox) suggestionsBox.classList.add("hidden");
+                        selectedSuggestionIndex = -1;
+                        searchWeather();
 
-});
+                    }
 
-if (favoriteButton) {
-    favoriteButton.addEventListener("click", () => {
-        saveFavorite(
-            currentWeatherData,
-            currentLatitude,
-            currentLongitude
-        );
-    });
-}
+                });
 
+                if (favoriteButton) {
+                    favoriteButton.addEventListener("click", () => {
+                        saveFavorite(
+                            currentWeatherData,
+                            currentLatitude,
+                            currentLongitude
+                        );
+                    });
+                }
 
-document.addEventListener("click", (e) => {
-    if (!e.target.closest(".search-wrapper")) {
 
-        if (suggestionsBox) suggestionsBox.classList.add("hidden");
-        selectedSuggestionIndex = -1;
+                document.addEventListener("click", (e) => {
+                    if (!e.target.closest(".search-wrapper")) {
 
-    }
-});
+                        if (suggestionsBox) suggestionsBox.classList.add("hidden");
+                        selectedSuggestionIndex = -1;
 
-displayFavorites();
+                    }
+                });
 
-showSkeleton();
+                displayFavorites();
 
-getCurrentLocation();
+                showSkeleton();
 
-setInterval(() => {
+                getCurrentLocation();
 
-    if (currentTimezone !== null) {
+                setInterval(() => {
 
-        updateDate(currentTimezone);
+                    if (currentTimezone !== null) {
 
-    }
+                        updateDate(currentTimezone);
+                        updateGreeting(currentTimezone);
 
-}, CLOCK_INTERVAL_MS);
+                    }
 
+                }, CLOCK_INTERVAL_MS);
 
-searchInput.addEventListener("focus", () => {
 
-    const query = searchInput.value.trim();
-    if (query.length === 0) {
-        showRecentSearches();
-    } else if (query.length >= 2) {
-        showSuggestions();
-    }
+                searchInput.addEventListener("focus", () => {
 
-});
+                    const query = searchInput.value.trim();
+                    if (query.length === 0) {
+                        showRecentSearches();
+                    } else if (query.length >= 2) {
+                        showSuggestions();
+                    }
 
-searchInput.addEventListener("input", () => {
+                });
 
-    clearTimeout(suggestionTimeout);
-    const query = searchInput.value.trim();
+                searchInput.addEventListener("input", () => {
 
-    if (query.length === 0) {
-        showRecentSearches();
-    } else if (query.length < 2) {
-        currentSuggestions = [];
-        selectedSuggestionIndex = -1;
-        if (suggestionsBox) {
-            suggestionsBox.innerHTML = "";
-            suggestionsBox.classList.add("hidden");
-        }
-    } else {
-        suggestionTimeout = setTimeout(() => {
-            showSuggestions();
-        }, DEBOUNCE_DELAY_MS);
-    }
+                    clearTimeout(suggestionTimeout);
+                    const query = searchInput.value.trim();
 
-});
+                    if (query.length === 0) {
+                        showRecentSearches();
+                    } else if (query.length < 2) {
+                        currentSuggestions = [];
+                        selectedSuggestionIndex = -1;
+                        if (suggestionsBox) {
+                            suggestionsBox.innerHTML = "";
+                            suggestionsBox.classList.add("hidden");
+                        }
+                    } else {
+                        suggestionTimeout = setTimeout(() => {
+                            showSuggestions();
+                        }, DEBOUNCE_DELAY_MS);
+                    }
 
-viewForecastButton.addEventListener("click", () => {
+                });
 
-    displayForecastModal();
+                viewForecastButton.addEventListener("click", () => {
 
-});
+                    displayForecastModal();
 
-closeModal.addEventListener("click", () => {
+                });
 
-    forecastModal.classList.add("hidden");
+                    closeModal.addEventListener("click", closeForecastModal);
 
-});
+                forecastModal.addEventListener("click", (e) => {
 
-forecastModal.addEventListener("click", (e) => {
+                    if (e.target === forecastModal) {
 
-    if (e.target === forecastModal) {
+                        closeForecastModal();
 
-        forecastModal.classList.add("hidden");
+                    }
 
-    }
+                });
 
-});
+                window.addEventListener("keydown", (e) => {
+                    if (e.key === "Escape" && !forecastModal.classList.contains("hidden")) {
+                        closeForecastModal();
+                    }
+                });
 

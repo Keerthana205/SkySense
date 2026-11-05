@@ -398,7 +398,7 @@ body {
     top: calc(100% + 8px);
     left: 0;
     right: 0;
-    z-index: 100;
+    z-index: 1000;
     background: var(--card);
     border-radius: 24px;
     box-shadow: 0 16px 40px rgba(23, 43, 95, .12);
@@ -786,6 +786,7 @@ body {
 .stat-content {
 
     min-width: 0;
+    overflow: hidden;
     font-weight: 700;
 
 }
@@ -800,6 +801,8 @@ body {
     font-weight: 600;
 
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: var(--muted);
 
 }
@@ -813,6 +816,8 @@ body {
     font-weight: 600;
 
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 
     line-height: 1.2;
 
@@ -1223,6 +1228,11 @@ body {
     cursor: pointer;
 }
 
+.favorite-card:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
 .favorite-card:hover {
     background: #EEF4FF;
     border-color: #D6E4FF;
@@ -1254,19 +1264,33 @@ body {
 }
 
 .remove-favorite-btn {
-    font-size: 16px !important;
-    color: #94A3B8;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     margin-left: 4px;
     padding: 2px;
     border-radius: 50%;
+    color: #94A3B8;
     transition:
         background var(--transition),
         color var(--transition);
 }
 
+.remove-favorite-btn .material-symbols-outlined {
+    font-size: 16px !important;
+}
+
 .remove-favorite-btn:hover {
     color: #EF4444;
     background: #FEE2E2;
+}
+
+.remove-favorite-btn:focus-visible {
+    outline: 2px solid #EF4444;
+    outline-offset: 2px;
 }
 
 .city-icon {
@@ -1728,84 +1752,6 @@ body.theme-night .hero-left::before {
 }
 
 /* ===============================
-   SEARCH SUGGESTIONS
-================================= */
-
-.search-suggestions {
-
-    position: absolute;
-
-    top: calc(100% + 10px);
-
-    left: 0;
-
-    right: 0;
-
-    background: var(--card);
-
-    border-radius: 20px;
-
-    box-shadow: var(--shadow-dropdown);
-
-    overflow: hidden;
-
-    z-index: 9999;
-
-}
-
-.search-suggestions.hidden {
-
-    display: none;
-
-}
-
-.suggestion-item {
-
-    display: flex;
-
-    align-items: center;
-
-    gap: 12px;
-
-    padding: 14px 22px;
-
-    cursor: pointer;
-
-    transition: .15s;
-
-}
-
-.suggestion-item:hover {
-
-    background: #F4F7FF;
-
-}
-
-.suggestion-item .material-symbols-outlined {
-
-    color: var(--primary);
-
-    font-size: 20px !important;
-
-}
-
-.suggestion-city {
-
-    font-weight: 600;
-
-    color: var(--text);
-
-}
-
-.suggestion-country {
-
-    color: #8FA1C6;
-
-    font-size: 13px;
-
-}
-
-/* ===============================
    FORECAST MODAL
 ================================= */
 
@@ -1842,6 +1788,8 @@ body.theme-night .hero-left::before {
 .forecast-modal-content {
 
     width: min(500px, 90vw);
+    max-height: 88vh;
+    overflow-y: auto;
 
     background: var(--card);
 
@@ -2247,7 +2195,13 @@ body.theme-night .hero-left::before {
 }
 
 
-@media (max-width:1024px) {
+@media (max-width:1200px) {
+
+    body {
+
+        padding: 32px 24px;
+
+    }
 
     .hero {
 
@@ -2291,6 +2245,12 @@ body.theme-night .hero-left::before {
 }
 
 @media (max-width:768px) {
+
+    body {
+
+        padding: 20px;
+
+    }
 
     .hero {
 
@@ -2356,6 +2316,33 @@ body.theme-night .hero-left::before {
 }
 
 @media (max-width:576px) {
+
+    body {
+
+        padding: 12px;
+
+    }
+
+    .toast {
+
+        top: 16px;
+
+        right: 16px;
+
+        left: 16px;
+
+        min-width: auto;
+
+        transform: translateY(-120px);
+
+    }
+
+    .toast.show {
+
+        transform: translateY(0);
+
+    }
+
     .app {
 
         padding: 16px;

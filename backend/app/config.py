@@ -13,7 +13,10 @@ load_dotenv(dotenv_path=ENV_PATH)
 OPENWEATHER_API_KEY: str = os.getenv("OPENWEATHER_API_KEY", "")
 
 # Allowed origins for Cross-Origin Resource Sharing (CORS) from the frontend
-ALLOWED_ORIGINS: str = os.getenv("ALLOWED_ORIGINS", "http://localhost:5500,http://127.0.0.1:5500")
+ALLOWED_ORIGINS: str = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5500,http://127.0.0.1:5500,http://localhost:5501,http://127.0.0.1:5501,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080"
+)
 
 # Port number on which the FastAPI application server runs
 PORT: int = int(os.getenv("PORT", "8000"))
